@@ -203,6 +203,37 @@ func (nfct *Nfct) Get(t Table, f Family, match Con) ([]Con, error) {
 	return nfct.query(req)
 }
 
+// DumpFilter returns matching conntrack entries with certain attributes
+func (nfct *Nfct) DumpFilter(t Table, f Family, match Con) ([]Con, error) {
+	if t != Conntrack {
+		return nil, ErrUnknownCtTable
+	}
+	query, err := nestAttributes(nfct.logger, &match)
+	if err != nil {
+		return []Con{}, err
+	}
+	data := putExtraHeader(uint8(f), unix.NFNETLINK_V0, unix.NFNL_SUBSYS_CTNETLINK)
+	data = append(data, query...)
+
+	req := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType(t << 8),
+			Flags: netlink.Request | netlink.DumpFiltered,
+		},
+		Data: data,
+	}
+
+	if t == Conntrack {
+		req.Header.Type |= netlink.HeaderType(ipctnlMsgCtGet)
+	} else if t == Expected {
+		req.Header.Type |= netlink.HeaderType(ipctnlMsgExpGet)
+	} else {
+		return []Con{}, ErrUnknownCtTable
+	}
+
+	return nfct.query(req)
+}
+
 // Update an existing conntrack entry
 func (nfct *Nfct) Update(t Table, f Family, attributes Con) error {
 	if t != Conntrack {
